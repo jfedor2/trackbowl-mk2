@@ -8,7 +8,13 @@
 #include <bluefruit.h>
 #include <Adafruit_LittleFS.h>
 #include <InternalFileSystem.h>
-
+#include <PDM.h>
+int32_t mic;
+ 
+extern PDMClass PDM;
+short sampleBuffer[256];  // buffer to read samples into, each sample is 16-bits
+volatile int samplesRead; // number of samples read
+ 
 #define ROTATE_Z_PIN 10
 #define Z_ROTATION_FILENAME "/trackbowl_z"
 
@@ -37,6 +43,17 @@ float battery = 0;
 uint32_t lastBatteryReport;
 
 void setup() {
+//********************
+Serial.begin(115200);
+  while ( !Serial ) delay(10);   // for nrf52840 with native usb
+Serial.println("Trackbowl Mouse is active");
+
+  PDM.onReceive(onPDMdata);
+  PDM.begin(1, 16000);
+
+
+//*********************
+  
   pinMode(ROTATE_Z_PIN, INPUT_PULLUP);
   // for battery level readings
   analogReference(AR_INTERNAL_3_0);
@@ -150,6 +167,41 @@ void quatmul(float* result, float* r, float* q) {
   result[2] = r[0] * q[2] + r[1] * q[3] + r[2] * q[0] - r[3] * q[1];
   result[3] = r[0] * q[3] - r[1] * q[2] + r[2] * q[1] + r[3] * q[0];
 }
+//****************************
+
+
+int32_t getPDMwave(int32_t samples) {
+  short minwave = 30000;
+  short maxwave = -30000;
+ 
+  while (samples > 0) {
+    if (!samplesRead) {
+      yield();
+      continue;
+    }
+    for (int i = 0; i < samplesRead; i++) {
+      minwave = min(sampleBuffer[i], minwave);
+      maxwave = max(sampleBuffer[i], maxwave);
+      samples--;
+    }
+    // clear the read count
+    samplesRead = 0;
+  }
+  return maxwave - minwave;
+}
+ 
+void onPDMdata() {
+  // query the number of bytes available
+  int bytesAvailable = PDM.available();
+ 
+  // read into the sample buffer
+  PDM.read(sampleBuffer, bytesAvailable);
+ 
+  // 16-bit, 2 bytes per sample
+  samplesRead = bytesAvailable / 2;
+}
+
+//*********************************
 
 void loop() {
   // we target 66 Hz
@@ -157,6 +209,24 @@ void loop() {
   if ((current_millis - prev_millis) < 15) {
     return;
   }
+
+  
+
+  //************************
+
+     samplesRead = 0;
+  mic = getPDMwave(400);
+  //Serial.println(mic);
+  if(mic > 1000){
+    blehid.mouseButtonPress(MOUSE_BUTTON_LEFT);
+    blehid.mouseButtonRelease();
+    Serial.println("Mouse Clicked");
+    }
+
+ 
+    //Serial.print("Mic: ");
+  
+  //***********************
   prev_millis = current_millis;
 
   if (needToPersistRotationZ && (lastRotationZAdjustment + 3000 < current_millis)) {
