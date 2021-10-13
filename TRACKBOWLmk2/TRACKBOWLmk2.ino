@@ -85,7 +85,7 @@ void setup() {
 
   // if "Z rotation" is on during startup, clear bonding information
   if (digitalRead(ROTATE_Z_PIN) == LOW) {
-    Bluefruit.clearBonds();
+    Bluefruit.Periph.clearBonds();
   }
 
   startAdvertising();
